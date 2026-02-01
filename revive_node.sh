@@ -31,9 +31,18 @@ for info in "${hosts_info[@]}"; do
   host=$(echo $info | jq -r ".host")
   pass=$(echo $info | jq -r ".password")
 
+  # --- 新增：自动判断域名后缀 ---
+  suffix="serv00.net" # 默认后缀
+  if [[ "$host" == *"small"* ]]; then
+      suffix="smallhost.pl" # 如果主机名包含small，则使用smallhost.pl
+  fi
+  # ---------------------------
+
   echo "host: $host"
   bas64_pass=$(toBase64 $pass)
-  output=$(curl -s -o /dev/null -w "%{http_code}" "https://$user.serv00.net/keep?token=$TOKEN&autoupdate=$AUTOUPDATE&sendtype=$SENDTYPE&telegramtoken=$base64_TELEGRAM_TOKEN&telegramuserid=$TELEGRAM_USERID&wxsendkey=$WXSENDKEY&buttonurl=$Base64BUTTON_URL&password=$bas64_pass&wxpushurl=$base64_WXPUSH_URL&wxtoken=$base64_WX_TOKEN")
+  
+  # 修改点：将 serv00.net 替换为 $suffix 变量
+  output=$(curl -s -o /dev/null -w "%{http_code}" "https://$user.$suffix/keep?token=$TOKEN&autoupdate=$AUTOUPDATE&sendtype=$SENDTYPE&telegramtoken=$base64_TELEGRAM_TOKEN&telegramuserid=$TELEGRAM_USERID&wxsendkey=$WXSENDKEY&buttonurl=$Base64BUTTON_URL&password=$bas64_pass&wxpushurl=$base64_WXPUSH_URL&wxtoken=$base64_WX_TOKEN")
 
   if [ "$output" -eq 200 ]; then
     echo "连接成功，账号正常"
@@ -61,7 +70,8 @@ for info in "${hosts_info[@]}"; do
     msg="🔴主机 ${host}, 用户 ${user}， 连接失败，可能网络问题!\n"
     chmod +x ./tgsend.sh
     export PASS=$pass
-    ./tgsend.sh "Host:$host, user:$user, 连接失败，可能网络问题，可直接访问主页查看: https://$user.serv00.net"
+    # 修改点：错误提示中的链接也同步替换为 $suffix
+    ./tgsend.sh "Host:$host, user:$user, 连接失败，可能网络问题，可直接访问主页查看: https://$user.$suffix"
   fi
   summary=$summary$(echo -n $msg)
 done
