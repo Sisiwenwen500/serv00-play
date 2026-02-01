@@ -9,22 +9,32 @@ const app = express()
 app.use(bodyParser.json())
 app.use(bodyParser.urlencoded({ extended: true }))
 app.use('/static', express.static(path.join(__dirname, 'static')))
-const user = require('child_process').execSync('whoami').toString().trim()
-const serv00PlayDir = `/home/${user}/serv00-play`
-const keepaliveScript = `${serv00PlayDir}/keepalive.sh`
+
+// 修改点 1：使用 process.env.HOME 获取用户主目录，兼容 Small.pl 和 Serv00
+const userHome = process.env.HOME || `/home/${require('child_process').execSync('whoami').toString().trim()}`;
+const serv00PlayDir = path.join(userHome, 'serv00-play');
+const keepaliveScript = path.join(serv00PlayDir, 'keepalive.sh');
 
 // 读取配置文件
 const configPath = path.join(__dirname, 'config.json')
 let config = {}
 if (fs.existsSync(configPath)) {
-  config = JSON.parse(fs.readFileSync(configPath, 'utf8'))
+  try {
+    config = JSON.parse(fs.readFileSync(configPath, 'utf8'))
+  } catch (e) {
+    console.error('配置文件解析失败:', e)
+  }
 }
 
 // 实现 loadConfig 方法
 function loadConfig() {
   if (fs.existsSync(configPath)) {
-    config = JSON.parse(fs.readFileSync(configPath, 'utf8'))
-    logError('配置文件重新加载成功')
+    try {
+      config = JSON.parse(fs.readFileSync(configPath, 'utf8'))
+      logError('配置文件重新加载成功')
+    } catch (e) {
+      logError('配置文件解析失败')
+    }
   } else {
     logError('配置文件不存在')
   }
@@ -91,7 +101,8 @@ function cleanAndDecode(str) {
 
 // 定时调用脚本的方法
 function scheduleScript() {
-  const cmd = `cd ${serv00PlayDir} && bash ${keepaliveScript} `
+  // 修改点 2：使用更安全的路径拼接
+  const cmd = `cd "${serv00PlayDir}" && bash "${keepaliveScript}" `
 
   const executeScript = () => {
     const interval = (parseInt(config.interval, 10) || 5) * 60000 // 默认5分钟
@@ -183,7 +194,10 @@ app.get('/keep', validateToken, async (req, res) => {
   )
   // 本地执行
   logError('本地执行keepalive')
-  const cmd = `cd ${serv00PlayDir} && nohup bash ${keepaliveScript} ${params.autoupdate} ${params.sendtype} ${params.telegramtoken} ${params.telegramuserid} ${params.wxsendkey} ${params.buttonurl} ${params.pass} ${params.wxpushurl} ${params.wxtoken} > /dev/null 2>&1 &`
+  
+  // 修改点 3：使用引号包裹路径，防止空格问题
+  const cmd = `cd "${serv00PlayDir}" && nohup bash "${keepaliveScript}" "${params.autoupdate}" "${params.sendtype}" "${params.telegramtoken}" "${params.telegramuserid}" "${params.wxsendkey}" "${params.buttonurl}" "${params.pass}" "${params.wxpushurl}" "${params.wxtoken}" > /dev/null 2>&1 &`
+  
   logError('cmd:' + cmd)
   exec(cmd, (error) => {
     if (error) {
