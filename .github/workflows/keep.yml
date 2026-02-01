@@ -3,13 +3,15 @@ name: 批量访问保活进程
 on:
   schedule:
     # 使用cron表达式定义任务运行的时间
-    #github最小时间间隔为10分钟
+    # github最小时间间隔为10分钟
     - cron: '*/10 * * * *'
   workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # 建议：添加超时时间，防止脚本卡死浪费额度
+    timeout-minutes: 10
 
     steps:
       - name: Checkout code
@@ -19,15 +21,19 @@ jobs:
         run: |
           sudo apt-get install jq
 
-      - name: 访问各个serv00并执行保活脚本
+      # 修改点：将名称改为通用描述
+      - name: 访问各个服务器并执行保活脚本
         env:
           HOSTS_JSON: ${{ secrets.HOSTS_JSON }}
           TELEGRAM_TOKEN: ${{secrets.TELEGRAM_TOKEN}}
           TELEGRAM_USERID: ${{secrets.TELEGRAM_USERID}}
+          # 补充：revive_node.sh 需要用到 WXSENDKEY，这里补上以防万一
+          WXSENDKEY: ${{secrets.WXSENDKEY}}
           WXPUSH_URL: ${{secrets.WXPUSH_URL}}
           WX_TOKEN: ${{secrets.WX_TOKEN}}
           SENDTYPE: ${{secrets.SENDTYPE}}
           BUTTON_URL: ${{secrets.BUTTON_URL}}
+          # 注意：vars 是 Repository Variables
           AUTOUPDATE: ${{vars.AUTOUPDATE}}
           LOGININFO: ${{vars.LOGININFO}}
           TOKEN: ${{secrets.TOKEN}}
