@@ -49,7 +49,7 @@ install() {
 
 	cd ${installpath}
 	echo "正在安装..."
-	if ! git clone https://github.com/frankiejun/serv00-play.git; then
+	if ! git clone https://github.com/Sisiwenwen500/serv00-play.git; then
 		echo -e "${RED}安装失败!${RESET}"
 		exit 1
 	fi
@@ -703,7 +703,7 @@ configSingBox() {
 					if [[ -n "$port" ]]; then
 						vmport="$port"
 					fi
-					read -p "请输入WSPATH,默认是[serv00]: " wspath
+					read -p "请输入WSPATH,默认是[small]: " wspath
 					read -p "请输入ARGO隧道token: " token
 					read -p "请输入ARGO隧道的域名: " domain
 				fi
@@ -853,7 +853,7 @@ configSingBox() {
 
 	#socks5 不需要uuid
 	if [[ "$type" != "1.3" ]]; then
-		wspath=${wspath:-serv00}
+		wspath=${wspath:-small}
 		read -p "是否自动分配UUID? [y/n] [y]:" input
 		input=${input:-y}
 		if [[ "$input" == "y" ]]; then
