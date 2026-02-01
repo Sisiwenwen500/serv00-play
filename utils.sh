@@ -776,14 +776,13 @@ clean_all_dns() {
 # 2. 利用 ping0.cc 进行 GFW 状态检测 (无需自建服务器)
 # 3. 生成 ITDog 直达链接方便复核
 # -----------------------------------------------------------
+# 请替换 utils.sh 中的 show_ip_status 函数
 show_ip_status() {
     localIPs=()
     useIPs=()
     local hostname=$(hostname)
-    # 提取主机编号，例如 s1.small.pl -> 1
     local host_number=$(echo "$hostname" | awk -F'[s.]' '{print $2}')
     
-    # 定义要检测的主机列表
     local hosts=("cache${host_number}.$(getDoMain)" "web${host_number}.$(getDoMain)" "$hostname")
     local hostmain=$(getDoMain)
     hostmain="${hostmain%.com}"
@@ -801,29 +800,22 @@ show_ip_status() {
         local status="Unknown"
         local check_link=""
 
-        # --- 步骤1: 获取 IP ---
+        # --- 获取 IP ---
         if isSmall; then
-            # Small.pl: 使用 drill 本地解析
             ip=$(drill -Q A "$host" | grep -E '^[0-9.]+$' | head -n 1)
         else
-            # Serv00: 使用 API 解析 (原逻辑)
             local response=$(curl -s "${baseurl}/api/getip?host=$host&type=$hostmain")
             if [[ ! "$response" =~ "not found" ]]; then
                 ip=$(echo "$response" | awk -F "|" '{print $1 }')
             fi
         fi
 
-        # --- 步骤2: 检测 GFW 状态 (仅当成功获取到 IP 时) ---
-        if [[ -n "$ip" && "$ip" != "Resolution Failed" ]]; then
-            # 存入可用 IP 列表
+        # --- 核心修改：无论成功失败，都处理 localIPs 数组以保持索引对齐 ---
+        if [[ -n "$ip" && "$ip" != "Resolution Failed" && "$ip" != "No IP Found" ]]; then
             localIPs+=("$ip")
             useIPs+=("$ip") 
-
-            # 生成 ITDog 的 TCPing 直达链接 (端口默认 443)
+            
             check_link="https://www.itdog.cn/tcping/${ip}:443"
-
-            # 尝试通过 ping0.cc 获取墙状态 (设置 5秒超时防止卡顿)
-            # ping0.cc 的页面包含 "国内正常" (绿色) 或 "国内屏蔽" (红色)
             local p0_content=$(curl -s --max-time 5 "https://ping0.cc/ip/${ip}")
             
             if echo "$p0_content" | grep -q "国内.*正常"; then
@@ -831,23 +823,18 @@ show_ip_status() {
             elif echo "$p0_content" | grep -q "国内.*屏蔽"; then
                 status="${RED}Blocked${RESET}"
             else
-                # 如果抓取失败，显示 LocalDNS，表示仅完成了本地解析
                 status="LocalDNS"
             fi
         else
             ip="No IP Found"
             status="${RED}Error${RESET}"
+            # 🔥 关键点：存入 null 占位，确保序号与数组下标一致
+            localIPs+=("null") 
         fi
 
-        # 格式化输出
-        # 注意: 链接可能很长，可以使用终端的 Ctrl+点击 打开
-        printf "%-3d | %-20s | %-15s | %-10s | %-10s\n" "$i" "$host" "$ip" "$status" "ITDog->Wait"
-        
-        # 很多终端不支持直接点击超链接，这里额外打印一行具体的链接供复制
-        # echo "    └─ Report: $check_link" 
+        printf "%-3d | %-20s | %-15s | %-10s | %-10s\n" "$i" "$host" "$ip" "$status" "Wait"
     done
     yellow "------------------------------------------------------------------------"
-    echo "提示: 'Accessible' 表示国内大部分地区可连; 'Blocked' 表示被墙; 'LocalDNS' 表示API超时但IP解析成功。"
 }
 
 stop_sing_box() {
