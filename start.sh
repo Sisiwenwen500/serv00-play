@@ -3375,56 +3375,86 @@ checkInstalled() {
 	return 1
 }
 
+# 请替换 start.sh 中的 changeHy2IP 函数
 changeHy2IP() {
-	cd ${installpath}/serv00-play/singbox
-	if [[ ! -e "singbox.json" || ! -e "config.json" ]]; then
-		red "未安装节点，请先安装!"
-		return 1
-	fi
-	showIPStatus
-	read -p "是否让程序为HY2选择可用的IP？[y/n] [y]:" input
-	input=${input:-y}
+    cd ${installpath}/serv00-play/singbox
+    if [[ ! -e "singbox.json" || ! -e "config.json" ]]; then
+        red "未安装节点，请先安装!"
+        return 1
+    fi
+    
+    # 1. 显示列表并获取数据
+    show_ip_status
+    
+    echo ""
+    yellow "请选择操作:"
+    echo "1. 自动选择最佳可用 IP (默认)"
+    echo "2. 手动选择 IP (输入序号 No.)"
+    read -p "请输入选项 [1]: " method
+    method=${method:-1}
 
-	if [[ "$input" == "n" ]]; then
-		read -p "是否手动选择IP？[y/n] [y]:" choose
-		choose=${choose:-y}
-		if [[ "$choose" == "y" ]]; then
-			read -p "请选择你要的IP的序号:" num
-			if [[ -z "$num" ]]; then
-				red "选择不能为空!"
-				return 1
-			fi
-			if [[ $num -lt 1 || $num -gt ${#localIPs[@]} ]]; then
-				echo "错误：num 的值非法！请输入 1 到 ${#localIPs[@]} 之间的整数。"
-				return 1
-			fi
-			hy2_ip=${localIPs[$((num - 1))]}
-		else
-			return 1
-		fi
-	else
-		hy2_ip=$(get_ip)
-	fi
+    local selected_ip=""
 
-	if [[ -z "$hy2_ip" ]]; then
-		red "很遗憾，已无可用IP!"
-		return 1
-	fi
-	if ! upInsertFd singbox.json HY2IP "$hy2_ip"; then
-		red "更新singbox.json配置文件失败!"
-		return 1
-	fi
+    # 2. 手动选择逻辑
+    if [[ "$method" == "2" ]]; then
+        while true; do
+            read -p "请输入 IP 对应的序号 (No.): " num
+            # 检查是否为空
+            if [[ -z "$num" ]]; then
+                continue
+            fi
+            
+            # 检查是否为数字以及范围是否合法
+            if [[ ! "$num" =~ ^[0-9]+$ ]] || [[ "$num" -lt 1 ]] || [[ "$num" -gt ${#localIPs[@]} ]]; then
+                red "无效的序号! 请输入 1 到 ${#localIPs[@]} 之间的数字。"
+                continue
+            fi
+            
+            # 获取数组中的 IP (序号减 1 即为下标)
+            selected_ip=${localIPs[$((num-1))]}
+            
+            # 检查该 IP 是否有效 (排除 null)
+            if [[ "$selected_ip" == "null" || -z "$selected_ip" ]]; then
+                red "该序号对应的 IP 无效 (No IP Found)，请重新选择!"
+            else
+                green "你已选择: $selected_ip"
+                break
+            fi
+        done
+        hy2_ip=$selected_ip
 
-	if ! upSingboxFd config.json "inbounds" "tag" "hysteria-in" "listen" "$hy2_ip"; then
-		red "更新config.json配置文件失败!"
-		return 1
-	fi
-	green "HY2 更换IP成功，当前IP为 $hy2_ip"
+    # 3. 自动选择逻辑
+    else
+        echo "正在自动选择..."
+        if [[ ${#useIPs[@]} -eq 0 ]]; then
+            red "当前无可用 IP (Accessible/LocalDNS)!"
+            return 1
+        fi
+        # 默认取第一个可用 IP
+        hy2_ip=${useIPs[0]}
+        green "自动选中: $hy2_ip"
+    fi
 
-	echo "正在重启sing-box..."
-	stopSingBox
-	startSingBox
+    # 4. 执行修改和重启
+    if [[ -z "$hy2_ip" ]]; then
+        red "IP 选择失败!"
+        return 1
+    fi
 
+    if ! upInsertFd singbox.json HY2IP "$hy2_ip"; then
+        red "更新 singbox.json 配置文件失败!"
+        return 1
+    fi
+
+    if ! upSingboxFd config.json "inbounds" "tag" "hysteria-in" "listen" "$hy2_ip"; then
+        red "更新 config.json 配置文件失败!"
+        return 1
+    fi
+    green "HY2 更换 IP 成功，当前 IP 为 $hy2_ip"
+
+    echo "正在重启 sing-box..."
+    stopSingBox
+    startSingBox
 }
 
 linkAliveServ() {
