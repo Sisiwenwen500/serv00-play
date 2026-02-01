@@ -2,6 +2,7 @@
 
 config="singbox.json"
 installpath="$HOME"
+# 引入修改后的 utils.sh，以支持 small.pl
 if [[ -e "$installpath/serv00-play" ]]; then
   source ${installpath}/serv00-play/utils.sh
 fi
@@ -65,21 +66,33 @@ uploadList() {
 
 export_list() {
   user="$(whoami)"
+  # 这里的 host 获取逻辑通常是 s1, s2 等。
+  # 在 small.pl 上 hostname 可能是 s0.small.pl，这里 cut -d '.' -f 1 会取到 s0，符合预期。
   host="$(hostname | cut -d '.' -f 1)"
+  
   if [[ "$HY2IP" != "::" ]]; then
     myip=${HY2IP}
   else
     myip="$(curl -s icanhazip.com)"
   fi
+  
   if [[ "$GOOD_DOMAIN" == "null" ]]; then
     GOOD_DOMAIN="www.visa.com.hk"
   fi
+  
   vmessname="Argo-vmess-$host-$user"
   hy2name="Hy2-$host-$user"
+  
   VMESSWS="{ \"v\":\"2\", \"ps\": \"Vmessws-${host}-${user}\", \"add\":\"$GOOD_DOMAIN\", \"port\":\"443\", \"id\": \"${UUID}\", \"aid\": \"0\",  \"scy\": \"none\",  \"net\": \"ws\",  \"type\": \"none\",  \"host\": \"${GOOD_DOMAIN}\",  \"path\": \"/${WSPATH}?ed=2048\",  \"tls\": \"tls\",  \"sni\": \"${GOOD_DOMAIN}\",  \"alpn\": \"\",  \"fp\": \"\"}"
+  
   ARGOVMESS="{ \"v\": \"2\", \"ps\": \"$vmessname\", \"add\": \"$GOOD_DOMAIN\", \"port\": \"443\", \"id\": \"${UUID}\", \"aid\": \"0\", \"scy\": \"none\", \"net\": \"ws\", \"type\": \"none\", \"host\": \"${ARGO_DOMAIN}\", \"path\": \"/${WSPATH}?ed=2048\", \"tls\": \"tls\", \"sni\": \"${ARGO_DOMAIN}\", \"alpn\": \"\",  \"fp\": \"\" }"
+  
   hysteria2="hysteria2://$UUID@$myip:$HY2PORT/?sni=www.bing.com&alpn=h3&insecure=1#$hy2name"
+  
+  # 此处使用了 utils.sh 中的 getDoMain 函数。
+  # 如果 utils.sh 已修改支持 small.pl，这里会自动变为 s0.small.pl
   socks5="https://t.me/socks?server=${host}.$(getDoMain)&port=${SOCKS5_PORT}&user=${SOCKS5_USER}&pass=${SOCKS5_PASS}"
+  
   proxyip="proxyip://${SOCKS5_USER}:${SOCKS5_PASS}@${host}.$(getDoMain):${SOCKS5_PORT}"
 
   cat >list <<EOF
@@ -95,7 +108,10 @@ $([[ "$type" =~ ^(1.3|2.4|2.5|3.3|4.4|4.5)$ ]] && echo $proxyip && echo "")
 
 EOF
   cat list
+  
+  # 上传节点信息到 linkalive 服务
   if [[ -e "${installpath}/serv00-play/linkalive/linkAlive.sh" ]]; then
+    # getUserDoMain 同样需要依赖 utils.sh 的修改来支持 smallhost.pl
     local domain=$(getUserDoMain)
     domain="${domain,,}"
     if [[ -e "${installpath}/domains/$domain/public_nodejs/config.json" ]]; then
