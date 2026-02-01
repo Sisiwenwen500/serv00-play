@@ -769,34 +769,85 @@ clean_all_dns() {
 	echo "DNS清理完毕!"
 }
 
+# -----------------------------------------------------------
+# 修改版: show_ip_status
+# 功能: 
+# 1. 自动识别 Small.pl 并进行本地 DNS 解析
+# 2. 利用 ping0.cc 进行 GFW 状态检测 (无需自建服务器)
+# 3. 生成 ITDog 直达链接方便复核
+# -----------------------------------------------------------
 show_ip_status() {
-	localIPs=()
-	useIPs=()
-	local hostname=$(hostname)
-	local host_number=$(echo "$hostname" | awk -F'[s.]' '{print $2}')
-	local hosts=("cache${host_number}.$(getDoMain)" "web${host_number}.$(getDoMain)" "$hostname")
-	local hostmain=$(getDoMain)
-	hostmain="${hostmain%.com}"
-	# 遍历主机名称数组
-	local i=0
-	for host in "${hosts[@]}"; do
-		((i++))
-		# 获取 API 返回的数据
-		local response=$(curl -s "${baseurl}/api/getip?host=$host&type=$hostmain")
+    localIPs=()
+    useIPs=()
+    local hostname=$(hostname)
+    # 提取主机编号，例如 s1.small.pl -> 1
+    local host_number=$(echo "$hostname" | awk -F'[s.]' '{print $2}')
+    
+    # 定义要检测的主机列表
+    local hosts=("cache${host_number}.$(getDoMain)" "web${host_number}.$(getDoMain)" "$hostname")
+    local hostmain=$(getDoMain)
+    hostmain="${hostmain%.com}"
 
-		# 检查返回的结果是否包含 "not found"
-		if [[ "$response" =~ "not found" ]]; then
-			echo "未识别主机${host}, 请联系作者饭奇骏!"
-			return
-		fi
-		local ip=$(echo "$response" | awk -F "|" '{print $1 }')
-		local status=$(echo "$response" | awk -F "|" '{print $2 }')
-		localIPs+=("$ip")
-		if [[ "$status" == "Accessible" ]]; then
-			useIPs+=("$ip")
-		fi
-		printf "%-2d %-20s | %-15s | %-10s\n" $i "$host" "$ip" "$status"
-	done
+    echo "正在检测 IP 及 GFW 状态，请稍候 (使用 ping0.cc 数据源)..."
+    yellow "------------------------------------------------------------------------"
+    printf "%-3s | %-20s | %-15s | %-10s | %-10s\n" "No." "Host" "IP Address" "GFW Status" "Check Link"
+    yellow "------------------------------------------------------------------------"
+
+    local i=0
+    for host in "${hosts[@]}"; do
+        ((i++))
+        
+        local ip=""
+        local status="Unknown"
+        local check_link=""
+
+        # --- 步骤1: 获取 IP ---
+        if isSmall; then
+            # Small.pl: 使用 drill 本地解析
+            ip=$(drill -Q A "$host" | grep -E '^[0-9.]+$' | head -n 1)
+        else
+            # Serv00: 使用 API 解析 (原逻辑)
+            local response=$(curl -s "${baseurl}/api/getip?host=$host&type=$hostmain")
+            if [[ ! "$response" =~ "not found" ]]; then
+                ip=$(echo "$response" | awk -F "|" '{print $1 }')
+            fi
+        fi
+
+        # --- 步骤2: 检测 GFW 状态 (仅当成功获取到 IP 时) ---
+        if [[ -n "$ip" && "$ip" != "Resolution Failed" ]]; then
+            # 存入可用 IP 列表
+            localIPs+=("$ip")
+            useIPs+=("$ip") 
+
+            # 生成 ITDog 的 TCPing 直达链接 (端口默认 443)
+            check_link="https://www.itdog.cn/tcping/${ip}:443"
+
+            # 尝试通过 ping0.cc 获取墙状态 (设置 5秒超时防止卡顿)
+            # ping0.cc 的页面包含 "国内正常" (绿色) 或 "国内屏蔽" (红色)
+            local p0_content=$(curl -s --max-time 5 "https://ping0.cc/ip/${ip}")
+            
+            if echo "$p0_content" | grep -q "国内.*正常"; then
+                status="${GREEN}Accessible${RESET}"
+            elif echo "$p0_content" | grep -q "国内.*屏蔽"; then
+                status="${RED}Blocked${RESET}"
+            else
+                # 如果抓取失败，显示 LocalDNS，表示仅完成了本地解析
+                status="LocalDNS"
+            fi
+        else
+            ip="No IP Found"
+            status="${RED}Error${RESET}"
+        fi
+
+        # 格式化输出
+        # 注意: 链接可能很长，可以使用终端的 Ctrl+点击 打开
+        printf "%-3d | %-20s | %-15s | %-10s | %-10s\n" "$i" "$host" "$ip" "$status" "ITDog->Wait"
+        
+        # 很多终端不支持直接点击超链接，这里额外打印一行具体的链接供复制
+        # echo "    └─ Report: $check_link" 
+    done
+    yellow "------------------------------------------------------------------------"
+    echo "提示: 'Accessible' 表示国内大部分地区可连; 'Blocked' 表示被墙; 'LocalDNS' 表示API超时但IP解析成功。"
 }
 
 stop_sing_box() {
