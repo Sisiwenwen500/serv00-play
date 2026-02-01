@@ -255,32 +255,47 @@ get_ip() {
 	echo "$final_ip"
 }
 
+# 判断是否为 serv00
 isServ00() {
-	[[ $(hostname) == *"serv00"* ]]
+    [[ $(hostname) == *"serv00"* ]]
 }
 
+# 新增：判断是否为 small.pl
+isSmall() {
+    [[ $(hostname) == *"small"* ]]
+}
+
+# 修改：获取主域名（增加 small.pl 支持）
 getDoMain() {
-	if isServ00; then
-		echo -n "serv00.com"
-	else
-		echo -n "hostuno.com"
-	fi
+    if isServ00; then
+        echo -n "serv00.com"
+    elif isSmall; then
+        echo -n "small.pl"
+    else
+        echo -n "hostuno.com"
+    fi
 }
 
+# 修改：获取用户域名（增加 smallhost.pl 支持）
 getUserDoMain() {
-	local proc=$1
-	local baseDomain=""
-	user="$(whoami)"
-	if isServ00; then
-		baseDomain="$user.serv00.net"
-	else
-		baseDomain="$user.useruno.com"
-	fi
-	if [[ -n "$proc" ]]; then
-		echo -n "$proc.$baseDomain"
-	else
-		echo -n "$baseDomain"
-	fi
+    local proc=$1
+    local baseDomain=""
+    user="$(whoami)"
+    
+    if isServ00; then
+        baseDomain="$user.serv00.net"
+    elif isSmall; then
+        # Small.pl 的用户默认二级域名通常是 username.smallhost.pl
+        baseDomain="$user.smallhost.pl"
+    else
+        baseDomain="$user.useruno.com"
+    fi
+    
+    if [[ -n "$proc" ]]; then
+        echo -n "$proc.$baseDomain"
+    else
+        echo -n "$baseDomain"
+    fi
 }
 
 #获取端口
