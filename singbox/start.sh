@@ -2,7 +2,6 @@
 
 config="singbox.json"
 installpath="$HOME"
-# 引入修改后的 utils.sh，以支持 small.pl
 if [[ -e "$installpath/serv00-play" ]]; then
   source ${installpath}/serv00-play/utils.sh
 fi
@@ -66,9 +65,80 @@ uploadList() {
 
 export_list() {
   user="$(whoami)"
-  # 这里的 host 获取逻辑通常是 s1, s2 等。
-  # 在 small.pl 上 hostname 可能是 s0.small.pl，这里 cut -d '.' -f 1 会取到 s0，符合预期。
-  host="$(hostname | cut -d '.' -f 1)"
+  
+  # --- 1. 显示可用节点列表 ---
+  echo ""
+  yellow "正在获取当前可用节点列表..."
+  show_ip_status # 调用 utils.sh 中的函数显示列表
+  
+  # 重构域名列表以匹配选择 (顺序需与 utils.sh 保持一致: cache, web, host)
+  local hostname=$(hostname)
+  local host_number=$(echo "$hostname" | awk -F'[s.]' '{print $2}')
+  local hostmain=$(getDoMain)
+  # 兼容 small.pl 和 serv00.com
+  if isSmall; then
+      hostmain="small.pl"
+  else
+      hostmain="serv00.com"
+  fi
+  local hosts_list=("cache${host_number}.${hostmain}" "web${host_number}.${hostmain}" "$hostname")
+
+  # --- 2. 交互式选择 ---
+  local selected_addr=""
+  local final_remark=""
+  
+  while true; do
+      echo ""
+      yellow "请选择 SOCKS5/VMess 链接使用的地址 (默认为本机域名):"
+      read -p "请输入序号 No. (直接回车默认选本机): " select_idx
+      
+      # 默认选择本机 (列表的最后一个，即第3个)
+      if [[ -z "$select_idx" ]]; then
+          select_idx=3
+      fi
+
+      # 验证输入
+      if [[ ! "$select_idx" =~ ^[0-9]+$ ]] || [[ "$select_idx" -lt 1 ]] || [[ "$select_idx" -gt ${#hosts_list[@]} ]]; then
+          red "无效序号，请重新输入!"
+          continue
+      fi
+
+      # 获取选中的域名和IP
+      local idx=$((select_idx-1))
+      local chosen_domain=${hosts_list[$idx]}
+      local chosen_ip=${localIPs[$idx]} # localIPs 是 show_ip_status 生成的全局数组
+
+      echo "你选择了: $chosen_domain (IP: $chosen_ip)"
+      
+      if [[ "$chosen_ip" == "null" || -z "$chosen_ip" ]]; then
+          red "警告：该节点 IP 获取失败，建议换一个。"
+          # continue # 如果你不想强制阻断，可以注释掉这行
+      fi
+
+      # --- 3. 选择使用域名还是IP ---
+      echo "请选择链接中填写的地址类型:"
+      echo "1. 使用域名 ($chosen_domain)"
+      echo "2. 使用 IP ($chosen_ip)"
+      read -p "请选择 [1]: " type_choice
+      
+      if [[ "$type_choice" == "2" ]]; then
+          if [[ "$chosen_ip" == "null" || -z "$chosen_ip" ]]; then
+             red "IP 无效，强制使用域名!"
+             selected_addr=$chosen_domain
+             final_remark="($chosen_domain)"
+          else
+             selected_addr=$chosen_ip
+             final_remark="(IP-$chosen_domain)"
+          fi
+      else
+          selected_addr=$chosen_domain
+          final_remark="($chosen_domain)"
+      fi
+      break
+  done
+
+  # --- 4. 生成链接 ---
+  # 使用 selected_addr 替换原有的 host 生成逻辑
   
   if [[ "$HY2IP" != "::" ]]; then
     myip=${HY2IP}
@@ -80,20 +150,21 @@ export_list() {
     GOOD_DOMAIN="www.visa.com.hk"
   fi
   
-  vmessname="Argo-vmess-$host-$user"
-  hy2name="Hy2-$host-$user"
+  # 修改备注名，增加所选节点的标识
+  vmessname="Argo-vmess-$user-$final_remark"
+  hy2name="Hy2-$user"
   
-  VMESSWS="{ \"v\":\"2\", \"ps\": \"Vmessws-${host}-${user}\", \"add\":\"$GOOD_DOMAIN\", \"port\":\"443\", \"id\": \"${UUID}\", \"aid\": \"0\",  \"scy\": \"none\",  \"net\": \"ws\",  \"type\": \"none\",  \"host\": \"${GOOD_DOMAIN}\",  \"path\": \"/${WSPATH}?ed=2048\",  \"tls\": \"tls\",  \"sni\": \"${GOOD_DOMAIN}\",  \"alpn\": \"\",  \"fp\": \"\"}"
+  VMESSWS="{ \"v\":\"2\", \"ps\": \"Vmessws-$user-$final_remark\", \"add\":\"$selected_addr\", \"port\":\"443\", \"id\": \"${UUID}\", \"aid\": \"0\",  \"scy\": \"none\",  \"net\": \"ws\",  \"type\": \"none\",  \"host\": \"${GOOD_DOMAIN}\",  \"path\": \"/${WSPATH}?ed=2048\",  \"tls\": \"tls\",  \"sni\": \"${GOOD_DOMAIN}\",  \"alpn\": \"\",  \"fp\": \"\"}"
   
   ARGOVMESS="{ \"v\": \"2\", \"ps\": \"$vmessname\", \"add\": \"$GOOD_DOMAIN\", \"port\": \"443\", \"id\": \"${UUID}\", \"aid\": \"0\", \"scy\": \"none\", \"net\": \"ws\", \"type\": \"none\", \"host\": \"${ARGO_DOMAIN}\", \"path\": \"/${WSPATH}?ed=2048\", \"tls\": \"tls\", \"sni\": \"${ARGO_DOMAIN}\", \"alpn\": \"\",  \"fp\": \"\" }"
   
   hysteria2="hysteria2://$UUID@$myip:$HY2PORT/?sni=www.bing.com&alpn=h3&insecure=1#$hy2name"
   
-  # 此处使用了 utils.sh 中的 getDoMain 函数。
-  # 如果 utils.sh 已修改支持 small.pl，这里会自动变为 s0.small.pl
-  socks5="https://t.me/socks?server=${host}.$(getDoMain)&port=${SOCKS5_PORT}&user=${SOCKS5_USER}&pass=${SOCKS5_PASS}"
+  # 修改点：使用 selected_addr
+  socks5="https://t.me/socks?server=${selected_addr}&port=${SOCKS5_PORT}&user=${SOCKS5_USER}&pass=${SOCKS5_PASS}"
   
-  proxyip="proxyip://${SOCKS5_USER}:${SOCKS5_PASS}@${host}.$(getDoMain):${SOCKS5_PORT}"
+  # 修改点：使用 selected_addr
+  proxyip="proxyip://${SOCKS5_USER}:${SOCKS5_PASS}@${selected_addr}:${SOCKS5_PORT}"
 
   cat >list <<EOF
 *******************************************
@@ -109,9 +180,8 @@ $([[ "$type" =~ ^(1.3|2.4|2.5|3.3|4.4|4.5)$ ]] && echo $proxyip && echo "")
 EOF
   cat list
   
-  # 上传节点信息到 linkalive 服务
+  # 上传配置逻辑 (保持不变)
   if [[ -e "${installpath}/serv00-play/linkalive/linkAlive.sh" ]]; then
-    # getUserDoMain 同样需要依赖 utils.sh 的修改来支持 smallhost.pl
     local domain=$(getUserDoMain)
     domain="${domain,,}"
     if [[ -e "${installpath}/domains/$domain/public_nodejs/config.json" ]]; then
