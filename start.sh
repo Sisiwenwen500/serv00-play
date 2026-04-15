@@ -301,7 +301,7 @@ restoreConfig() {
 }
 
 make_vmess_config() {
-	cat >tempvmess.json <<EOF
+    cat >tempvmess.json <<EOF
   {
       "tag": "vmess-ws-in",
       "type": "vmess",
@@ -309,13 +309,13 @@ make_vmess_config() {
       "listen_port": $vmport,
       "users": [
       {
-        "uuid": "$uuid"
+        "uuid": "$uuid",
+        "alterId": 0
       }
     ],
     "transport": {
       "type": "ws",
-      "path": "/$wspath",
-      "early_data_header_name": "Sec-WebSocket-Protocol"
+      "path": "/$wspath"
       }
     }
 EOF
@@ -362,7 +362,7 @@ EOF
 }
 
 make_hy2_config() {
-	cat >temphy2.json <<EOF
+    cat >temphy2.json <<EOF
    {
        "tag": "hysteria-in",
        "type": "hysteria2",
@@ -373,12 +373,9 @@ make_hy2_config() {
              "password": "$uuid"
          }
      ],
-     "masquerade": "https://www.bing.com",
      "tls": {
          "enabled": true,
-         "alpn": [
-             "h3"
-         ],
+         "alpn": ["h3"],
          "certificate_path": "cert.pem",
          "key_path": "private.key"
         }
@@ -406,52 +403,53 @@ EOF
 }
 
 generate_config() {
-	local outbound=$1
-	comma=""
-	comma0=""
-	if [[ ! -e "private.key" || ! -e "cert.pem" ]]; then
-		openssl ecparam -genkey -name prime256v1 -out "private.key"
-		openssl req -new -x509 -days 3650 -key "private.key" -out "cert.pem" -subj "/CN=www.bing.com"
-	fi
-	if [[ "$type" == "1.1" || "$type" == "1.2" ]]; then
-		make_vmess_config
-	elif [ "$type" = "2" ]; then
-		make_hy2_config
-	elif [ "$type" = "1.3" ]; then
-		make_socks5_config
-	elif [[ "$type" =~ ^(2.4|2.5)$ ]]; then
-		make_vmess_config
-		comma0=","
-		make_socks5_config
-	elif [[ "$type" =~ ^(3.1|3.2)$ ]]; then
-		make_vmess_config
-		comma=","
-		make_hy2_config
-	elif [[ "$type" == "3.3" ]]; then
-		make_hy2_config
-		make_socks5_config
-		comma0=","
-	else
-		make_socks5_config
-		make_vmess_config
-		make_hy2_config
-		comma=","
-		comma0=","
-	fi
+    local outbound=$1
+    comma=""
+    comma0=""
+    if [[ ! -e "private.key" || ! -e "cert.pem" ]]; then
+        openssl ecparam -genkey -name prime256v1 -out "private.key"
+        openssl req -new -x509 -days 3650 -key "private.key" -out "cert.pem" -subj "/CN=www.bing.com"
+    fi
+    if [[ "$type" == "1.1" || "$type" == "1.2" ]]; then
+        make_vmess_config
+    elif [ "$type" = "2" ]; then
+        make_hy2_config
+    elif [ "$type" = "1.3" ]; then
+        make_socks5_config
+    elif [[ "$type" =~ ^(2.4|2.5)$ ]]; then
+        make_vmess_config
+        comma0=","
+        make_socks5_config
+    elif [[ "$type" =~ ^(3.1|3.2)$ ]]; then
+        make_vmess_config
+        comma=","
+        make_hy2_config
+    elif [[ "$type" == "3.3" ]]; then
+        make_hy2_config
+        make_socks5_config
+        comma0=","
+    else
+        make_socks5_config
+        make_vmess_config
+        make_hy2_config
+        comma=","
+        comma0=","
+    fi
 
-	if [[ "$outbound" == "1" ]]; then
-		outboundType="wireguard-out"
-	elif [[ "$outbound" == "2" ]]; then
-		outboundType="socks5_outbound"
-	else
-		outboundType="direct"
-	fi
+    if [[ "$outbound" == "1" ]]; then
+        outboundType="wireguard-out"
+    elif [[ "$outbound" == "2" ]]; then
+        outboundType="socks5_outbound"
+    else
+        outboundType="direct"
+    fi
 
-	cat >config.json <<EOF
- {
+    # 剔除了崩溃的 ads 规则集，降低内存占用防止 Serv00 杀进程
+    cat >config.json <<EOF
+{
   "log": {
     "disabled": true,
-    "level": "info",
+    "level": "warn",
     "timestamp": true
   },
   "dns": {
@@ -463,27 +461,19 @@ generate_config() {
         "detour": "direct"
       }
     ],
-    "rules": [
-      {
-        "rule_set": [
-          "geosite-category-ads-all"
-        ],
-        "server": "block"
-      }
-    ],
     "final": "google",
     "strategy": "",
     "disable_cache": false,
     "disable_expire": false
   },
-    "inbounds": [
+  "inbounds": [
     $([[ "$type" =~ ^(1.3|3.3|2.4|2.5|3.3|4.4|4.5)$ ]] && cat tmpsocks5.json)
     $comma0
     $([[ "$type" == "1.1" || "$type" == "1.2" || "$type" =~ ^(2.4|2.5|3.1|3.2|4.4|4.5)$ ]] && cat tempvmess.json)
     $comma
     $([[ "$type" == "2" || "$type" =~ ^(3|4)\.[0-9]+$ ]] && cat temphy2.json)
-   ],
-    "outbounds": [
+  ],
+  "outbounds": [
     $([[ "$outbound" == "1" ]] && make_outbound_wireguard)
     $([[ "$outbound" == "2" ]] && cat temp_outbound_socks5.json && rm -rf temp_outbound_socks5.json)
     {
@@ -501,13 +491,13 @@ generate_config() {
   ],
   "route": {
     "rules": [
-    {
-     "domain": [
-             "usher.ttvnw.net",
-             "jnn-pa.googleapis.com"
-            ],
-     "outbound": "$outboundType"
-    },
+      {
+        "domain": [
+          "usher.ttvnw.net",
+          "jnn-pa.googleapis.com"
+        ],
+        "outbound": "$outboundType"
+      },
       {
         "protocol": "dns",
         "outbound": "dns-out"
@@ -515,28 +505,13 @@ generate_config() {
       {
         "ip_is_private": true,
         "outbound": "direct"
-      },
-      {
-        "rule_set": [
-          "geosite-category-ads-all"
-        ],
-        "outbound": "block"
-      }
-    ],
-    "rule_set": [
-      {
-        "tag": "geosite-category-ads-all",
-        "type": "remote",
-        "format": "binary",
-        "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ads-all.srs",
-        "download_detour": "direct"
       }
     ],
     "final": "direct"
-   }
+  }
 }
 EOF
-	rm -rf tempvmess.json temphy2.json tmpsocks5.json
+    rm -rf tempvmess.json temphy2.json tmpsocks5.json
 }
 
 generate_random_string() {
