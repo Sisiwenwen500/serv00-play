@@ -4438,8 +4438,9 @@ vip_statement() {
 }
 
 getLatestVer() {
-	ver=$(git ls-remote --tags https://github.com/frankiejun/serv00-play.git | awk -F/ '{print $3}' | sort -V | tail -n 1)
-	echo $ver
+    # 将 frankiejun 替换为 Sisiwenwen500
+    ver=$(git ls-remote --tags https://github.com/Sisiwenwen500/serv00-play.git | awk -F/ '{print $3}' | sort -V | tail -n 1)
+    echo $ver
 }
 getCurrentVer() {
 	ver=$(git describe --tags --abbrev=0 2>/dev/null)
@@ -4454,8 +4455,8 @@ showMenu() {
 	art_wrod=$(figlet "serv00-play")
 	echo "<------------------------------------------------------------------>"
 	echo -e "${CYAN}${art_wrod}${RESET}"
-	echo -e "${GREEN} 饭奇骏频道:https://www.youtube.com/@frankiejun8965 ${RESET}"
-	echo -e "${GREEN} TG交流群:https://t.me/fanyousuiqun ${RESET}"
+	echo -e "${GREEN} Sisiwenwen500 ${RESET}"
+	echo -e "${GREEN} 原作者TG交流群:https://t.me/fanyousuiqun ${RESET}"
 	echo -e "${GREEN} 当前版本号:$(getCurrentVer) 最新版本号:$(getLatestVer) ${RESET}"
 	echo "<------------------------------------------------------------------>"
 	echo "请选择一个选项:"
