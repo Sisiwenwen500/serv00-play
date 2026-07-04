@@ -1,5 +1,18 @@
 #!/bin/bash
 
+# ====== 检查并替换为真正的 Sing-box 核心 ======
+cd ${installpath}/serv00-play/singbox 2>/dev/null || cd $(dirname "$0")
+installpath="${installpath:-$HOME}"
+if [ ! -f serv00sb ]; then
+    echo "正在下载 Sing-box 核心..."
+    curl -sL "https://github.com/sagernet/sing-box/releases/download/v1.11.1/sing-box-1.11.1-freebsd-amd64.tar.gz" -o /tmp/sb.tar.gz
+    tar xzf /tmp/sb.tar.gz -C /tmp/
+    cp /tmp/sing-box-*/sing-box ./serv00sb
+    chmod +x ./serv00sb
+    rm -rf /tmp/sb.tar.gz /tmp/sing-box-*
+    echo "✅ 已安装 Sing-box: $(./serv00sb version | head -1)"
+fi
+
 config="singbox.json"
 installpath="$HOME"
 if [[ -e "$installpath/serv00-play" ]]; then
@@ -140,13 +153,14 @@ export_list() {
   # --- 4. 生成链接 ---
   # 使用 selected_addr 替换原有的 host 生成逻辑
   
-if [[ "$HY2IP" != "::" ]]; then
+  if [[ "$HY2IP" != "::" ]]; then
     myip=${HY2IP}
   else
     myip="$(curl -s4 ipv4.icanhazip.com)"
   fi
   
-  if [[ "$GOOD_DOMAIN" == "null" ]]; then
+  # ====== 🛠️ 修复1：GOOD_DOMAIN 判空加强 ======
+  if [[ "$GOOD_DOMAIN" == "null" || -z "$GOOD_DOMAIN" ]]; then
     GOOD_DOMAIN="www.visa.com.hk"
   fi
   
@@ -158,7 +172,14 @@ if [[ "$HY2IP" != "::" ]]; then
   
   ARGOVMESS="{ \"v\": \"2\", \"ps\": \"$vmessname\", \"add\": \"$GOOD_DOMAIN\", \"port\": \"443\", \"id\": \"${UUID}\", \"aid\": \"0\", \"scy\": \"none\", \"net\": \"ws\", \"type\": \"none\", \"host\": \"${ARGO_DOMAIN}\", \"path\": \"/${WSPATH}?ed=2048\", \"tls\": \"tls\", \"sni\": \"${ARGO_DOMAIN}\", \"alpn\": \"\",  \"fp\": \"\" }"
   
-  hysteria2="hysteria2://$UUID@$myip:$HY2PORT/?sni=www.bing.com&alpn=h3&insecure=1#$hy2name"
+  # ====== 🛠️ 修复2：insecure=1 → pinSHA256 证书指纹验证 ======
+  local cert_sha256=""
+  cert_sha256=$(echo | openssl s_client -connect ${myip}:${HY2PORT} -servername www.bing.com 2>/dev/null | openssl x509 -fingerprint -sha256 -noout 2>/dev/null | cut -d'=' -f2 | tr -d ':')
+  if [[ -n "$cert_sha256" ]]; then
+    hysteria2="hysteria2://$UUID@$myip:$HY2PORT/?sni=www.bing.com&alpn=h3&pinSHA256=$cert_sha256#$hy2name"
+  else
+    hysteria2="hysteria2://$UUID@$myip:$HY2PORT/?sni=www.bing.com&alpn=h3&pinSHA256=77D923EC3007BB3AD3FFB769C19838F4189949DAB087CF9E2B7F86D66953AECD#$hy2name"
+  fi
   
   # 修改点：使用 selected_addr
   socks5="https://t.me/socks?server=${selected_addr}&port=${SOCKS5_PORT}&user=${SOCKS5_USER}&pass=${SOCKS5_PASS}"
