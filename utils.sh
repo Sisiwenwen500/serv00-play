@@ -221,42 +221,21 @@ get_webip() {
 get_ip() {
     local hostname=$(hostname)
     local host_number=$(echo "$hostname" | grep -oE '[0-9]+' | head -n 1)
-    local hosts=("cache${host_number}.$(getDoMain)" "web${host_number}.$(getDoMain)" "$hostname")
+    local my_domain=$(echo "$hostname" | cut -d'.' -f2-)
+    local hosts=("cache${host_number}.${my_domain}" "web${host_number}.${my_domain}" "$hostname")
     
-    # 强制只获取 IPv4 地址，防止抓取到 IPv6 导致配置崩溃
     local final_ip="$(curl -s4 ipv4.icanhazip.com)" 
 
-    local hostmain=$(getDoMain)
-    hostmain="${hostmain%.com}"
-
     for host in "${hosts[@]}"; do
-        if isSmall; then
-            local resolved_ip=$(host -t A "$host" 2>/dev/null | grep "has address" | awk '{print $4}' | head -n 1)
-            if [[ -z "$resolved_ip" ]]; then
-                resolved_ip=$(ping -c 1 "$host" 2>/dev/null | head -n 1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
-            fi
-            
-            if [[ -n "$resolved_ip" && "$resolved_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-                echo "$resolved_ip"
-                return
-            fi
-        else
-            local response=$(curl -s "${baseurl}/api/getip?host=$host&type=$hostmain")
-            if [[ "$response" =~ "not found" ]]; then
-                continue
-            fi
-
-            local ip=$(echo "$response" | awk -F "|" '{ if ($2 == "Accessible") print $1 }')
-
-            if [[ -n "$ip" ]]; then
-                echo "$ip"
-                return
-            fi
-            
-            local temp_ip=$(echo "$response" | awk -F "|" '{print $1}')
-            if [[ -n "$temp_ip" ]]; then
-                final_ip=$temp_ip
-            fi
+        local resolved_ip=$(host -t A "$host" 2>/dev/null | grep "has address" | awk '{print $4}' | head -n 1)
+        if [[ -z "$resolved_ip" ]]; then
+            resolved_ip=$(ping -c 1 "$host" 2>/dev/null | head -n 1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
+        fi
+        
+        # 只要成功解析到合法的 IPv4，立刻返回
+        if [[ -n "$resolved_ip" && "$resolved_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "$resolved_ip"
+            return
         fi
     done
 
@@ -785,18 +764,19 @@ clean_all_dns() {
 # 3. 生成 ITDog 直达链接方便复核
 # -----------------------------------------------------------
 # 请替换 utils.sh 中的 show_ip_status 函数
-show_ip_status() {show_ip_status() {
+show_ip_status() {
     localIPs=()
     useIPs=()
     local hostname=$(hostname)
     
-    # 修复 1：更精确地提取主机编号（只提取主机名中的第一组纯数字）
-    # 这样无论是 s1 还是 web1，都能准确提取出 1
+    # 精确提取主机编号 (例如 s1.small.pl 提取出 1)
     local host_number=$(echo "$hostname" | grep -oE '[0-9]+' | head -n 1)
     
-    local hosts=("cache${host_number}.$(getDoMain)" "web${host_number}.$(getDoMain)" "$hostname")
-    local hostmain=$(getDoMain)
-    hostmain="${hostmain%.com}"
+    # 精确提取主机域名 (例如 s1.small.pl 提取出 small.pl)
+    local my_domain=$(echo "$hostname" | cut -d'.' -f2-)
+    
+    # 动态组合主机名
+    local hosts=("cache${host_number}.${my_domain}" "web${host_number}.${my_domain}" "$hostname")
 
     echo "正在检测 IP 及 GFW 状态，请稍候..."
     yellow "------------------------------------------------------------------------"
@@ -809,30 +789,19 @@ show_ip_status() {show_ip_status() {
         
         local ip=""
         local status="Unknown"
-        local check_link=""
 
-        # 修复 2：使用更稳定的 host 命令获取 IPv4，并用 ping 作为备用兜底
-        if isSmall; then
-            # 首选方案：使用 host 命令精确抓取 A 记录
-            ip=$(host -t A "$host" 2>/dev/null | grep "has address" | awk '{print $4}' | head -n 1)
-            
-            # 备用方案：如果 host 命令没取到，利用 ping 获取 IP
-            if [[ -z "$ip" ]]; then
-                ip=$(ping -c 1 "$host" 2>/dev/null | head -n 1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
-            fi
-        else
-            local response=$(curl -s "${baseurl}/api/getip?host=$host&type=$hostmain")
-            if [[ ! "$response" =~ "not found" ]]; then
-                ip=$(echo "$response" | awk -F "|" '{print $1 }')
-            fi
+        # 统一使用本地 DNS 解析，彻底不请求任何第三方 API 获取 IP
+        ip=$(host -t A "$host" 2>/dev/null | grep "has address" | awk '{print $4}' | head -n 1)
+        if [[ -z "$ip" ]]; then
+            ip=$(ping -c 1 "$host" 2>/dev/null | head -n 1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
         fi
 
-        # 修复 3：严格校验提取出的是否为合法的 IPv4 地址
+        # 严格校验是否为正确格式的 IPv4 地址 (过滤掉 502 或 IPv6)
         if [[ -n "$ip" && "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             localIPs+=("$ip")
             useIPs+=("$ip") 
             
-            check_link="https://www.itdog.cn/tcping/${ip}:443"
+            # 使用 ping0.cc 获取墙状态
             local p0_content=$(curl -s --max-time 5 "https://ping0.cc/ip/${ip}" 2>/dev/null)
             
             if echo "$p0_content" | grep -q "国内.*正常"; then
