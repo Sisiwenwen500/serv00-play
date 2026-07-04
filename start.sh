@@ -4452,119 +4452,78 @@ getCurrentVer() {
 }
 
 showMenu() {
-	art_wrod=$(figlet "serv00-play")
-	echo "<------------------------------------------------------------------>"
-	echo -e "${CYAN}${art_wrod}${RESET}"
-	echo -e "${GREEN} Sisiwenwen500 ${RESET}"
-	echo -e "${GREEN} 原作者TG交流群:https://t.me/fanyousuiqun ${RESET}"
-	echo -e "${GREEN} 当前版本号:$(getCurrentVer) 最新版本号:$(getLatestVer) ${RESET}"
-	echo "<------------------------------------------------------------------>"
-	echo "请选择一个选项:"
+    art_wrod=$(figlet "serv00-play")
+    
+    # 1. 获取当前版本和最新版本
+    local current_ver=$(getCurrentVer)
+    local latest_ver=$(getLatestVer)
 
-	options=("安装/更新serv00-play项目" "sun-panel" "webssh" "阅后即焚" "linkalive" "设置保活的项目" "配置sing-box"
-		"运行sing-box" "停止sing-box" "显示sing-box节点信息" "快照恢复" "系统初始化" "前置工作及设置中国时区" "哪吒探针管理" "哪吒面板管理" "设置彩色开机字样" "显示本机IP"
-		"mtproto代理" "alist管理" "端口管理" "域名证书管理" "一键root" "自动检测主机IP状态" "一键更换hy2的IP" "KeepAlive" "Domains-Support" "微信消息推送界面管理"
-		"开发工具管理" "卸载")
+    echo "<------------------------------------------------------------------>"
+    echo -e "${CYAN}${art_wrod}${RESET}"
+    echo -e "${GREEN} git更新项目:https://github.com/Sisiwenwen500/serv00-play ${RESET}"
+    echo -e "${GREEN} 原TG交流群:https://t.me/fanyousuiqun ${RESET}"
+    echo -e "${GREEN} 当前版本号:${current_ver} 最新版本号:${latest_ver} ${RESET}"
+    echo "<------------------------------------------------------------------>"
 
-	select opt in "${options[@]}"; do
-		case $REPLY in
-		1)
-			install
-			;;
-		2)
-			sunPanelServ
-			;;
-		3)
-			websshServ
-			;;
-		4)
-			burnAfterReadingServ
-			;;
-		5)
-			linkAliveServ
-			;;
-		6)
-			setConfig
-			;;
-		7)
-			configSingBox
-			;;
-		8)
-			startSingBox
-			;;
-		9)
-			stopSingBox
-			;;
-		10)
-			showSingBoxInfo
-			;;
-		11)
-			ImageRecovery
-			;;
-		12)
-			InitServer
-			;;
-		13)
-			setCnTimeZone
-			;;
-		14)
-			manageNeZhaAgent
-			;;
-		15)
-			manageNeZhaBoard
-			;;
-		16)
-			setColorWord
-			;;
-		17)
-			showIP
-			;;
-		18)
-			mtprotoServ
-			;;
-		19)
-			alistServ
-			;;
-		20)
-			portServ
-			;;
-		21)
-			domainSSLServ
-			;;
-		22)
-			rootServ
-			;;
-		23)
-			showIPStatus
-			;;
-		24)
-			changeHy2IP
-			;;
-		25)
-			keepAliveServ
-			;;
-		26)
-			DSServ
-			;;
-		27)
-			manageWxPushSkin
-			;;
-		28)
-			devManage
-			;;
-		29)
-			uninstall
-			;;
-		0)
-			echo "退出"
-			exit 0
-			;;
-		*)
-			echo "无效的选项 "
-			;;
-		esac
+    # 2. 核心修改：版本对比与更新提示
+    # 如果两个版本都不为空，且当前版本不等于最新版本
+    if [[ -n "$current_ver" && "$current_ver" != "null" && -n "$latest_ver" && "$current_ver" != "$latest_ver" ]]; then
+        echo -e "${RED}======================================================${RESET}"
+        echo -e "${YELLOW}⭐ 发现新版本: ${latest_ver}！强烈建议更新以获取最新功能和修复。${RESET}"
+        echo -e "${RED}======================================================${RESET}"
+        read -p "是否立即更新到最新版本？[y/n] [y]:" update_choice
+        update_choice=${update_choice:-y}
+        if [[ "$update_choice" == "y" || "$update_choice" == "Y" ]]; then
+            # 调用已有的安装/更新函数
+            install "y" 
+            # 更新完毕后退出当前循环，因为脚本已经刷新
+            return 
+        fi
+    fi
 
-	done
+    # 3. 正常显示菜单选项
+    echo "请选择一个选项:"
+
+    options=("安装/更新serv00-play项目" "sun-panel" "webssh" "阅后即焚" "linkalive" "设置保活的项目" "配置sing-box"
+        "运行sing-box" "停止sing-box" "显示sing-box节点信息" "快照恢复" "系统初始化" "前置工作及设置中国时区" "哪吒探针管理" "哪吒面板管理" "设置彩色开机字样" "显示本机IP"
+        "mtproto代理" "alist管理" "端口管理" "域名证书管理" "一键root" "自动检测主机IP状态" "一键更换hy2的IP" "KeepAlive" "Domains-Support" "微信消息推送界面管理"
+        "开发工具管理" "卸载")
+
+    select opt in "${options[@]}"; do
+        case $REPLY in
+        1) install ;;
+        2) sunPanelServ ;;
+        3) websshServ ;;
+        4) burnAfterReadingServ ;;
+        5) linkAliveServ ;;
+        6) setConfig ;;
+        7) configSingBox ;;
+        8) startSingBox ;;
+        9) stopSingBox ;;
+        10) showSingBoxInfo ;;
+        11) ImageRecovery ;;
+        12) InitServer ;;
+        13) setCnTimeZone ;;
+        14) manageNeZhaAgent ;;
+        15) manageNeZhaBoard ;;
+        16) setColorWord ;;
+        17) showIP ;;
+        18) mtprotoServ ;;
+        19) alistServ ;;
+        20) portServ ;;
+        21) domainSSLServ ;;
+        22) rootServ ;;
+        23) showIPStatus ;;
+        24) changeHy2IP ;;
+        25) keepAliveServ ;;
+        26) DSServ ;;
+        27) manageWxPushSkin ;;
+        28) devManage ;;
+        29) uninstall ;;
+        0) echo "退出"; exit 0 ;;
+        *) echo "无效的选项 " ;;
+        esac
+    done
 
 }
 
