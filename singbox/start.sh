@@ -140,10 +140,10 @@ export_list() {
   # --- 4. 生成链接 ---
   # 使用 selected_addr 替换原有的 host 生成逻辑
   
-  if [[ "$HY2IP" != "::" ]]; then
+if [[ "$HY2IP" != "::" ]]; then
     myip=${HY2IP}
   else
-    myip="$(curl -s icanhazip.com)"
+    myip="$(curl -s4 ipv4.icanhazip.com)"
   fi
   
   if [[ "$GOOD_DOMAIN" == "null" ]]; then
