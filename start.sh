@@ -408,7 +408,11 @@ generate_config() {
     comma0=""
     if [[ ! -e "private.key" || ! -e "cert.pem" ]]; then
         openssl ecparam -genkey -name prime256v1 -out "private.key"
-        openssl req -new -x509 -days 3650 -key "private.key" -out "cert.pem" -subj "/CN=www.bing.com"
+            openssl req -new -x509 -days 3650 -key ./private.key -out ./cert.pem -subj "/CN=www.bing.com"
+    # 自动提取并保存证书 SHA256 指纹，供节点链接使用
+    openssl x509 -in ./cert.pem -fingerprint -sha256 -noout 2>/dev/null | cut -d'=' -f2 | tr -d ':' > ./cert.sha256
+    echo "✅ 证书 SHA256 指纹已保存到 cert.sha256"
+
     fi
     if [[ "$type" == "1.1" || "$type" == "1.2" ]]; then
         make_vmess_config
