@@ -2,6 +2,7 @@
 
 config="singbox.json"
 installpath="$HOME"
+# 引入 utils.sh
 if [[ -e "$installpath/serv00-play" ]]; then
   source ${installpath}/serv00-play/utils.sh
 fi
@@ -50,7 +51,6 @@ uploadList() {
   local url="${linkBaseurl}/addlist?token=$token"
   local encode_content=$(echo -n "$content" | base64 -w 0)
 
-  #echo "encode_content:$encode_content"
   curl -X POST "$url" \
     -H "Content-Type: application/json" \
     -d "{\"content\":\"$encode_content\",
@@ -66,16 +66,13 @@ uploadList() {
 export_list() {
   user="$(whoami)"
   
-  # --- 1. 显示可用节点列表 ---
   echo ""
   yellow "正在获取当前可用节点列表..."
-  show_ip_status # 调用 utils.sh 中的函数显示列表
+  show_ip_status
   
-  # 重构域名列表以匹配选择 (顺序需与 utils.sh 保持一致: cache, web, host)
   local hostname=$(hostname)
   local host_number=$(echo "$hostname" | awk -F'[s.]' '{print $2}')
   local hostmain=$(getDoMain)
-  # 兼容 small.pl 和 serv00.com
   if isSmall; then
       hostmain="small.pl"
   else
@@ -83,7 +80,6 @@ export_list() {
   fi
   local hosts_list=("cache${host_number}.${hostmain}" "web${host_number}.${hostmain}" "$hostname")
 
-  # --- 2. 交互式选择 ---
   local selected_addr=""
   local final_remark=""
   
@@ -92,30 +88,25 @@ export_list() {
       yellow "请选择 SOCKS5/VMess 链接使用的地址 (默认为本机域名):"
       read -p "请输入序号 No. (直接回车默认选本机): " select_idx
       
-      # 默认选择本机 (列表的最后一个，即第3个)
       if [[ -z "$select_idx" ]]; then
           select_idx=3
       fi
 
-      # 验证输入
       if [[ ! "$select_idx" =~ ^[0-9]+$ ]] || [[ "$select_idx" -lt 1 ]] || [[ "$select_idx" -gt ${#hosts_list[@]} ]]; then
           red "无效序号，请重新输入!"
           continue
       fi
 
-      # 获取选中的域名和IP
       local idx=$((select_idx-1))
       local chosen_domain=${hosts_list[$idx]}
-      local chosen_ip=${localIPs[$idx]} # localIPs 是 show_ip_status 生成的全局数组
+      local chosen_ip=${localIPs[$idx]} 
 
       echo "你选择了: $chosen_domain (IP: $chosen_ip)"
       
       if [[ "$chosen_ip" == "null" || -z "$chosen_ip" ]]; then
           red "警告：该节点 IP 获取失败，建议换一个。"
-          # continue # 如果你不想强制阻断，可以注释掉这行
       fi
 
-      # --- 3. 选择使用域名还是IP ---
       echo "请选择链接中填写的地址类型:"
       echo "1. 使用域名 ($chosen_domain)"
       echo "2. 使用 IP ($chosen_ip)"
@@ -137,9 +128,17 @@ export_list() {
       break
   done
 
-  # --- 4. 生成链接 ---
-  # 使用 selected_addr 替换原有的 host 生成逻辑
+  # ==============================================================================
+  # 核心修复 1: 提取 SHA256 证书指纹 (如果证书存在)
+  # ==============================================================================
+  local cert_fingerprint=""
+  local cert_path="${installpath}/serv00-play/singbox/cert.pem"
   
+  if [[ -f "$cert_path" ]]; then
+      # 提取指纹并去掉冒号，转换为小写或大写（大部分客户端兼容去冒号格式）
+      cert_fingerprint=$(openssl x509 -noout -fingerprint -sha256 -inform pem -in "$cert_path" | cut -d "=" -f 2 | tr -d ':')
+  fi
+
   if [[ "$HY2IP" != "::" ]]; then
     myip=${HY2IP}
   else
@@ -147,28 +146,56 @@ export_list() {
   fi
   
   if [[ "$GOOD_DOMAIN" == "null" ]]; then
-    GOOD_DOMAIN="www.visa.com.hk"
+    GOOD_DOMAIN="www.bing.com" # 建议与默认生成的证书域名保持一致
   fi
   
-  # 修改备注名，增加所选节点的标识
   vmessname="Argo-vmess-$user-$final_remark"
   hy2name="Hy2-$user"
   
-  VMESSWS="{ \"v\":\"2\", \"ps\": \"Vmessws-$user-$final_remark\", \"add\":\"$selected_addr\", \"port\":\"443\", \"id\": \"${UUID}\", \"aid\": \"0\",  \"scy\": \"none\",  \"net\": \"ws\",  \"type\": \"none\",  \"host\": \"${GOOD_DOMAIN}\",  \"path\": \"/${WSPATH}?ed=2048\",  \"tls\": \"tls\",  \"sni\": \"${GOOD_DOMAIN}\",  \"alpn\": \"\",  \"fp\": \"\"}"
+  # ==============================================================================
+  # 核心修复 2: 规范化 VMess JSON 配置
+  # 移除 allowInsecure 隐患，对于自签证书，由于 vmess 协议原生不支持指纹传递，
+  # 我们只能尽量提供规范的 TLS 参数。如果用户客户端报错，仍需填入指纹。
+  # ==============================================================================
   
-  ARGOVMESS="{ \"v\": \"2\", \"ps\": \"$vmessname\", \"add\": \"$GOOD_DOMAIN\", \"port\": \"443\", \"id\": \"${UUID}\", \"aid\": \"0\", \"scy\": \"none\", \"net\": \"ws\", \"type\": \"none\", \"host\": \"${ARGO_DOMAIN}\", \"path\": \"/${WSPATH}?ed=2048\", \"tls\": \"tls\", \"sni\": \"${ARGO_DOMAIN}\", \"alpn\": \"\",  \"fp\": \"\" }"
+  VMESSWS="{ \"v\":\"2\", \"ps\": \"Vmessws-$user-$final_remark\", \"add\":\"$selected_addr\", \"port\":\"443\", \"id\": \"${UUID}\", \"aid\": \"0\", \"scy\": \"auto\", \"net\": \"ws\", \"type\": \"none\", \"host\": \"${GOOD_DOMAIN}\", \"path\": \"/${WSPATH}?ed=2048\", \"tls\": \"tls\", \"sni\": \"${GOOD_DOMAIN}\", \"alpn\": \"\", \"fp\": \"chrome\"}"
   
-  hysteria2="hysteria2://$UUID@$myip:$HY2PORT/?sni=www.bing.com&alpn=h3&insecure=1#$hy2name"
+  ARGOVMESS="{ \"v\": \"2\", \"ps\": \"$vmessname\", \"add\": \"$GOOD_DOMAIN\", \"port\": \"443\", \"id\": \"${UUID}\", \"aid\": \"0\", \"scy\": \"auto\", \"net\": \"ws\", \"type\": \"none\", \"host\": \"${ARGO_DOMAIN}\", \"path\": \"/${WSPATH}?ed=2048\", \"tls\": \"tls\", \"sni\": \"${ARGO_DOMAIN}\", \"alpn\": \"\", \"fp\": \"chrome\" }"
   
-  # 修改点：使用 selected_addr
+  # ==============================================================================
+  # 核心修复 3: Hysteria2 链接优化
+  # v2rayN 新版支持在 Hysteria2 URI 中传递 pinSHA256 参数。
+  # ==============================================================================
+  local hy2_params="sni=www.bing.com&alpn=h3"
+  if [[ -n "$cert_fingerprint" ]]; then
+      # 如果提取到了指纹，则加入 pinSHA256 参数，移除 insecure=1
+      hy2_params="${hy2_params}&pinSHA256=${cert_fingerprint}"
+  else
+      # 兼容老配置的降级处理
+      hy2_params="${hy2_params}&insecure=1"
+  fi
+  
+  hysteria2="hysteria2://$UUID@$myip:$HY2PORT/?${hy2_params}#$hy2name"
+  
   socks5="https://t.me/socks?server=${selected_addr}&port=${SOCKS5_PORT}&user=${SOCKS5_USER}&pass=${SOCKS5_PASS}"
   
-  # 修改点：使用 selected_addr
   proxyip="proxyip://${SOCKS5_USER}:${SOCKS5_PASS}@${selected_addr}:${SOCKS5_PORT}"
 
+  # ==============================================================================
+  # 核心修复 4: 终端输出优化
+  # ==============================================================================
   cat >list <<EOF
 *******************************************
-V2-rayN:
+【节点安全配置提示】
+----------------------------
+当前服务器证书指纹 (SHA256):
+${cert_fingerprint:-"未找到本地证书"}
+
+* Hysteria2 节点已自动集成指纹 (pinSHA256)，导入即可使用。
+* VMess 节点如遇 TLS 验证报错，请在客户端手动将上述指纹填入 [pinnedPeerCertSha256] 字段。
+----------------------------
+
+V2-rayN / Clash 节点链接:
 ----------------------------
 
 $([[ "$type" =~ ^(1.1|3.1|4.4|2.4)$ ]] && echo "vmess://$(echo ${ARGOVMESS} | base64 -w0)")
@@ -180,7 +207,6 @@ $([[ "$type" =~ ^(1.3|2.4|2.5|3.3|4.4|4.5)$ ]] && echo $proxyip && echo "")
 EOF
   cat list
   
-  # 上传配置逻辑 (保持不变)
   if [[ -e "${installpath}/serv00-play/linkalive/linkAlive.sh" ]]; then
     local domain=$(getUserDoMain)
     domain="${domain,,}"
@@ -200,18 +226,14 @@ if [ "$keep" = "list" ]; then
   export_list
   exit 0
 fi
-#echo "type:$type"
-#如果只有argo+vmess
-#type=1,3 的处理只是为了兼容旧配置
+
 if [[ "$type" =~ ^(1|3|1.1|3.1|4.4|2.4)$ ]]; then
   run
 fi
 
-#如果只有hy2和vmess+ws/socks5
 if [[ "$type" =~ ^(1.2|1.3|2|2.5|3.2|3.3|4.5)$ ]]; then
   r=$(ps aux | grep cloudflare | grep -v grep | awk '{print $2}')
   if [ -n "$r" ]; then
-    #echo $r
     kill -9 $r
   fi
   chmod +x ./serv00sb
